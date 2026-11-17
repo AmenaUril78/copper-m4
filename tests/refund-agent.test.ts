@@ -261,6 +261,12 @@ describe("the instructions", () => {
     expect(REFUND_INSTRUCTIONS).toMatch(/don't make a new request for an order that already has a pending one/i);
   });
 
+  it("the Refund agent tells the customer a specialist will review a pending request as soon as possible", () => {
+    expect(REFUND_INSTRUCTIONS).toMatch(/passed to a refund specialist/i);
+    expect(REFUND_INSTRUCTIONS).toMatch(/as soon as possible/i);
+    expect(REFUND_INSTRUCTIONS).toMatch(/don't promise a specific time or an outcome/i);
+  });
+
   it("the Refund agent is told not to decide for itself and not to promise", () => {
     expect(REFUND_INSTRUCTIONS).toMatch(/never decide yourself/i);
     expect(REFUND_INSTRUCTIONS).toMatch(/never say a refund is approved/i);

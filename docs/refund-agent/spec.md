@@ -147,9 +147,11 @@ A staff panel on the home page (opened from the support panel or `/#refund-conso
 
 Approve and Reject only work on a refund that is still `pending`, so two clicks (or two staff) can't decide it twice.
 
-**Demo only:** the app has no login, so anyone who opens the console could approve refunds. The page says so on screen. Real use needs authentication.
+**Demo only:** the app has no login, so anyone who opens the console could approve refunds. The console doesn't show a notice about this, so it is recorded here instead. Real use needs authentication.
 
 ### 7. Telling the customer
+
+When a request goes to a person, `request_refund` returns this message, which also shows on the tool card: "Your refund request for $149.00 has been passed to a refund specialist. They will review it as soon as possible." The agent passes it on warmly in its own words, without promising a specific time or an outcome, and without mentioning the limit or why it went to a person.
 
 After a human decides, the customer learns the outcome when they ask. The Refund agent calls `lookup_order` (which includes the order's latest refund) or `check_refund_status`, and states the result and, for a rejection, the reason. It never makes a second request for an order that already has a pending one. A live update is a stretch goal (see Open questions).
 
@@ -176,6 +178,7 @@ After a human decides, the customer learns the outcome when they ask. The Refund
 | **RA-17** | Without Supabase or an AI key, the chat and the console show `<SetupRequired />` or a plain message and do not crash |
 | **RA-18** | Every model call goes through `lib/ai/call.ts` and is logged with `module` 4 and `feature` `refund-agent` or `ask-copper-support` |
 | **RA-19** | `npm test`, `npm run lint` and `npm run typecheck` pass, and `docs/architecture.md` has a Module 4 section |
+| **RA-20** | When a request goes to a person, the customer is told it has been passed to a refund specialist who will review it as soon as possible, with no mention of the limit |
 
 ## Out of scope
 

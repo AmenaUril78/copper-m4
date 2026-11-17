@@ -126,7 +126,9 @@ describe("Refund Console panel", () => {
     const panel = within(await screen.findByTestId("refund-console"));
     expect(await panel.findByTestId("pending-refund")).toBeInTheDocument();
     expect(panel.getByText(/Order 1003 · \$120\.00/)).toBeInTheDocument();
-    expect(panel.getByRole("note")).toHaveTextContent(/class demo only/i);
+    // The "class demo only" notice has been removed from the console.
+    expect(panel.queryByRole("note")).toBeNull();
+    expect(panel.queryByText(/class demo/i)).toBeNull();
     expect(loadRefundConsole).toHaveBeenCalledTimes(1);
   });
 

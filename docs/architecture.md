@@ -150,8 +150,8 @@ changes it, and the agent reports it the next time `check_refund_status` runs.
 - **Money in whole cents** to avoid rounding mistakes.
 
 **Risks and open questions:** the app has no login, so the console and the
-refund tables are open to anyone with the public key: a class demo only, and the
-console says so. The customer learns a human's decision only on their next
+refund tables are open to anyone with the public key: a class demo only (the
+console shows no notice about this, so it is recorded here). The customer learns a human's decision only on their next
 message (no live push). Cost per message is logged to `ai_calls`.
 
 ## Adding a module

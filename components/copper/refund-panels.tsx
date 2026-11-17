@@ -191,14 +191,6 @@ export function RefundPanels({
             </SheetClose>
           </div>
           <div className="bg-secondary flex-1 space-y-4 overflow-y-auto p-4">
-            <p
-              role="note"
-              className="border-chart-4 bg-chart-4/15 rounded-md border p-3 text-sm"
-            >
-              <strong>Class demo only.</strong> There is no login, so anyone who
-              can open this panel could approve refunds. Real use needs
-              authentication. All orders and customers are fictional.
-            </p>
             <ConsoleBody supabaseConfigured={supabaseConfigured} />
           </div>
         </SheetContent>

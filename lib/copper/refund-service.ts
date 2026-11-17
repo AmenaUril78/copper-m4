@@ -51,7 +51,8 @@ export async function requestRefund(
     return {
       status: "pending",
       refundId: open.id,
-      message: "A refund for this order is already waiting for a person to review.",
+      message:
+        "A refund request for this order is already with a refund specialist. They will review it as soon as possible.",
     };
   }
 
@@ -96,7 +97,7 @@ export async function requestRefund(
     return {
       status: "pending",
       refundId: saved.id,
-      message: `${formatCents(input.amountCents)} needs a person to review it. ${decision.reason}`,
+      message: `Your refund request for ${formatCents(input.amountCents)} has been passed to a refund specialist. They will review it as soon as possible.`,
     };
   }
 

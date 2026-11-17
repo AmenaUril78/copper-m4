@@ -69,6 +69,15 @@ describe("requestRefund", () => {
     expect(db.markOrderRefunded).not.toHaveBeenCalled();
   });
 
+  it("tells the customer a refund specialist will review it as soon as possible, without the limit or the reason", async () => {
+    const result = await requestRefund({ orderId: "1003", amountCents: 12000, reason: "x" });
+    expect(result.message).toMatch(/passed to a refund specialist/i);
+    expect(result.message).toMatch(/as soon as possible/i);
+    expect(result.message).toContain("$120.00");
+    expect(result.message).not.toMatch(/limit/i);
+    expect(result.message).not.toMatch(/\$50/);
+  });
+
   it("RA-5: the limit comes from the database, so a changed limit changes the result", async () => {
     vi.mocked(db.readLimitCents).mockResolvedValue(20000);
     const result = await requestRefund({ orderId: "1003", amountCents: 12000, reason: "x" });
@@ -96,6 +105,8 @@ describe("requestRefund", () => {
     );
     const result = await requestRefund({ orderId: "1003", amountCents: 500, reason: "x" });
     expect(result.status).toBe("pending");
+    expect(result.message).toMatch(/already with a refund specialist/i);
+    expect(result.message).toMatch(/as soon as possible/i);
     expect(db.createRefund).not.toHaveBeenCalled();
   });
 
