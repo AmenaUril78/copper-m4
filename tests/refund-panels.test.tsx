@@ -13,6 +13,7 @@ vi.mock("@/lib/copper/refund-actions", () => ({
   changeLimit: vi.fn(),
 }));
 
+import { SiteHeader } from "@/components/copper/site-header";
 import { createLive } from "@/lib/ai/live";
 import { CONSOLE_REFRESH_MS, RefundPanels } from "@/components/copper/refund-panels";
 
@@ -109,6 +110,26 @@ describe("Copper Support panel", () => {
 
     const back = within(await open());
     expect(back.getByText("Hello Copper")).toBeInTheDocument();
+  });
+
+  it("the Support link in the top header opens the panel, again and again", async () => {
+    render(
+      <>
+        <SiteHeader />
+        <RefundPanels aiConfigured supabaseConfigured />
+      </>,
+    );
+    const link = within(screen.getByTestId("site-header")).getByRole("link", { name: /^support$/i });
+    expect(link).toHaveAttribute("href", "#support");
+
+    fireEvent.click(link);
+    const panel = within(await screen.findByTestId("support-panel"));
+    fireEvent.click(panel.getByRole("button", { name: /^close$/i }));
+    await waitFor(() => expect(screen.queryByTestId("support-panel")).toBeNull());
+
+    // The address still ends in #support, and the link works a second time.
+    fireEvent.click(link);
+    expect(await screen.findByTestId("support-panel")).toBeInTheDocument();
   });
 
   it("opens from /#support", async () => {
