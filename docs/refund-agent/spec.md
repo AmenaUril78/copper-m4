@@ -8,7 +8,9 @@ _Fictional — for educational use. Status: built, updated to match the build. T
 2. **Panels, not pages.** Module 1's AC-1.4 says the site is a single page with no other routes, so both the support chat and the Refund Console are slide-out panels on the home page (`components/copper/refund-panels.tsx`), opened from a "Copper Support" button or from `/#support` and `/#refund-console`. The console loads its data with a Server Action each time it opens.
 3. **No `chats` table.** The chat page already holds the whole conversation, so it also holds the mode (`shopping` or `refund`) and sends it with each message.
 4. **The chat keeps its conversation.** A closed panel unmounts its content, so the conversation is kept in `RefundPanels` and survives closing the panel or visiting the console.
-5. **`request_refund` takes dollars** (`amountUsd`, like 35.00). The code converts to whole cents before the rules see it.
+5. **No claim without proof.** The first live test showed the Refund agent telling a customer their order 1005 request was "passed to a specialist" without ever calling `request_refund`, so nothing was saved. `lib/copper/assistant/reply-check.ts` now checks every Refund agent reply against the tool results (see section 4).
+6. **Two names.** The AI is the **refund assistant**. Only a person is a **refund specialist**, so "passed to a refund specialist" always means a real request is waiting in the console.
+7. **`request_refund` takes dollars** (`amountUsd`, like 35.00). The code converts to whole cents before the rules see it.
 
 ## Scenario
 
@@ -65,6 +67,7 @@ Refund Console (staff) ◄──────────────────
 | **Mode** | A saved value on the chat (`shopping` or `refund`). Code reads it to route each message |
 | **The rule is code** | `decideRefund` compares the amount with the limit. The model can't see or change the limit, so it can't be talked past it |
 | **Human in the loop** | Over the limit, the agent pauses. A person clicks Approve or Reject, and the agent reports the result |
+| **Proof before words** | The customer is only told a request was sent on or decided if a tool result shows it was. Otherwise the reply is removed and the agent retries once |
 | **Audit trail** | Every refund records whether code or a human decided, when, and the reason or note |
 
 ## What to build
@@ -127,6 +130,13 @@ Its tools (strict zod schemas; unknown fields are rejected):
 
 While the mode is `refund`, every message goes to the Refund agent until it hands back. A hand-back with nothing said ("this isn't mine") lets Copper answer the same message right away. A hand-back after a goodbye waits for the customer's next message.
 
+**No claim without proof (`reply-check.ts`).** After each Refund agent reply, the code checks it against the tool results from the same answer. If the reply says a request was passed on, submitted, approved or rejected, or mentions a specialist reviewing, but no tool returned a saved outcome (`request_refund` approved, pending or rejected; `lookup_order` showing a refund already on the order; `check_refund_status` finding the refund), then:
+
+1. the reply's words are removed, and the agent runs once more with a correction ("call request_refund now, or ask for what's missing");
+2. if it still can't back the claim up, the customer sees: "I haven't submitted a refund request for you yet. Please tell me your order number, how much you'd like refunded, and why, and I'll submit it."
+
+After the agent finishes, if its last `request_refund` returned an outcome the reply never mentions, the app's own message is added, so the customer always hears what really happened. A failed tool call is never evidence.
+
 ### 5. New rules for Copper in the support chat (`handoff.ts`)
 
 Ask Copper's own instructions are unchanged. The support chat sends them plus these:
@@ -141,6 +151,7 @@ The Ask Copper panel (and its tools-off comparison chat) gets none of this.
 
 A staff panel on the home page (opened from the support panel or `/#refund-console`) with three parts:
 
+0. **Always current:** a Refresh button, and the list re-reads itself every 15 seconds while the panel is open. A failed refresh keeps the last list (and any note being typed) and says so.
 1. **Pending queue:** each pending refund with order, customer, amount, the customer's reason, and time. **Approve** (optional note) and **Reject**. **Reject cannot be saved without a written reason**, checked in the UI and again on the server.
 2. **Limit editor:** shows the current auto-refund limit and lets an admin change it.
 3. **Refund log:** every refund with status, who decided (`auto`, `human` or `rules`), when, and the note or reason.
@@ -179,6 +190,8 @@ After a human decides, the customer learns the outcome when they ask. The Refund
 | **RA-18** | Every model call goes through `lib/ai/call.ts` and is logged with `module` 4 and `feature` `refund-agent` or `ask-copper-support` |
 | **RA-19** | `npm test`, `npm run lint` and `npm run typecheck` pass, and `docs/architecture.md` has a Module 4 section |
 | **RA-20** | When a request goes to a person, the customer is told it has been passed to a refund specialist who will review it as soon as possible, with no mention of the limit |
+| **RA-21** | If the Refund agent tells a customer a request was sent on or decided and no tool result shows it, the reply is removed and the agent retries once; if it still can't back it up, the customer is told no request was submitted |
+| **RA-22** | The Refund Console has a Refresh button and re-reads the refunds every 15 seconds while open; a failed refresh keeps the last list and any note being typed |
 
 ## Out of scope
 

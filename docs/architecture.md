@@ -124,6 +124,7 @@ people handle the money. The full spec is
 | Switchboard | `lib/copper/assistant/support.ts` | `askSupport({ messages, mode })`: runs the agent that owns the mode, and changes the mode when an agent hands off or hands back |
 | Copper's hand-off | `lib/copper/assistant/handoff.ts` | `hand_off_to_refund_agent`, the support instructions, and a keyword safety net |
 | Refund agent | `lib/copper/assistant/refund-agent.ts` | Its instructions and four tools: `lookup_order`, `request_refund`, `check_refund_status`, `hand_back_to_copper` |
+| Proof before words | `lib/copper/assistant/reply-check.ts` | Checks each Refund agent reply against the tool results: a claim that a request was sent on or decided needs a saved outcome behind it. Otherwise the reply is removed and the agent retries once; the app's own message is added if the agent leaves the outcome out |
 | The rule | `lib/copper/refund-policy.ts` | `decideRefund`: approve, send to a person, or reject. Plain code, no AI |
 | Saving and deciding | `lib/copper/refund-service.ts`, `lib/copper/refunds.ts` | `requestRefund` and `decideAsHuman`; the only file that reads or writes the refund tables |
 | Refund Console | `components/copper/refund-console.tsx`, `lib/copper/refund-actions.ts` | Pending queue (reject needs a reason), auto-refund limit editor, refund log. Data is loaded by a Server Action each time the panel opens |
@@ -145,6 +146,10 @@ changes it, and the agent reports it the next time `check_refund_status` runs.
   and the console are slide-out panels on `/`.
 - **The chat holds the mode.** No `chats` table: the page already holds the
   conversation, and a changed mode can't approve money anyway.
+- **Proof before words.** A model can write "passed to a specialist" without calling
+  the tool (seen live with order 1005), so the switchboard checks every Refund agent
+  reply against the tool results and never lets an unbacked claim reach the customer.
+- **Two names.** The AI is the refund assistant; only a person is a refund specialist.
 - **The agents never talk to each other.** The code changes the mode; the agent
   and the human meet only in the database.
 - **Money in whole cents** to avoid rounding mistakes.

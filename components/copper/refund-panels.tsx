@@ -22,26 +22,55 @@ import {
   type ConsoleData,
 } from "@/lib/copper/refund-actions";
 
+/** How often the open console re-reads the refunds, so new requests appear on their own. */
+export const CONSOLE_REFRESH_MS = 15000;
+
 function ConsoleBody({ supabaseConfigured }: { supabaseConfigured: boolean }) {
   const [data, setData] = useState<ConsoleData | "loading">("loading");
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // After a decision or a new limit, read everything again.
-  const reload = useCallback(async () => {
-    setData(await loadRefundConsole());
+  // Takes a fresh read. A good read replaces what is shown. A failed read keeps
+  // the last good list, so typing a note isn't wiped by one slow request.
+  const apply = useCallback((result: ConsoleData) => {
+    if (result.status === "ok") {
+      setData(result);
+      setUpdatedAt(new Date());
+      setRefreshFailed(false);
+    } else {
+      setData((previous) =>
+        typeof previous === "object" && previous.status === "ok"
+          ? previous
+          : result,
+      );
+      setRefreshFailed(true);
+    }
   }, []);
 
+  // After a decision or a new limit, and when Refresh is clicked.
+  const reload = useCallback(async () => {
+    setRefreshing(true);
+    apply(await loadRefundConsole());
+    setRefreshing(false);
+  }, [apply]);
+
   // The panel's content only exists while it is open, so this reads fresh
-  // refunds every time it opens.
+  // refunds every time it opens, then again every few seconds while it stays open.
   useEffect(() => {
     if (!supabaseConfigured) return;
     let cancelled = false;
-    void loadRefundConsole().then((result) => {
-      if (!cancelled) setData(result);
-    });
+    const read = () =>
+      void loadRefundConsole().then((result) => {
+        if (!cancelled) apply(result);
+      });
+    read();
+    const timer = window.setInterval(read, CONSOLE_REFRESH_MS);
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
-  }, [supabaseConfigured]);
+  }, [supabaseConfigured, apply]);
 
   if (!supabaseConfigured) {
     return (
@@ -57,18 +86,45 @@ function ConsoleBody({ supabaseConfigured }: { supabaseConfigured: boolean }) {
   }
   if (data.status === "unavailable") {
     return (
-      <p className="text-sm">
-        Refunds can&apos;t be read right now. Check that the refund migration
-        has been run in Supabase, then reopen this panel.
-      </p>
+      <div className="space-y-2 text-sm">
+        <p>
+          Refunds can&apos;t be read right now. Check that the refund migration
+          has been run in Supabase, then try again.
+        </p>
+        <Button size="sm" variant="outline" onClick={() => void reload()}>
+          Try again
+        </Button>
+      </div>
     );
   }
   return (
-    <RefundConsole
-      refunds={data.refunds}
-      limitCents={data.limitCents}
-      onChanged={() => void reload()}
-    />
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p
+          data-testid="console-updated"
+          className="text-muted-foreground text-xs"
+        >
+          {refreshFailed
+            ? "Couldn't refresh just now. Showing the last list."
+            : updatedAt
+              ? `Updated ${updatedAt.toLocaleTimeString("en-US")}. Refreshes every ${CONSOLE_REFRESH_MS / 1000} seconds.`
+              : "Loading…"}
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={refreshing}
+          onClick={() => void reload()}
+        >
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </Button>
+      </div>
+      <RefundConsole
+        refunds={data.refunds}
+        limitCents={data.limitCents}
+        onChanged={() => void reload()}
+      />
+    </div>
   );
 }
 

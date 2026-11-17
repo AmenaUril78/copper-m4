@@ -261,6 +261,22 @@ describe("the instructions", () => {
     expect(REFUND_INSTRUCTIONS).toMatch(/don't make a new request for an order that already has a pending one/i);
   });
 
+  it("the Refund agent must always call request_refund and never claim an outcome without a tool result", () => {
+    expect(REFUND_INSTRUCTIONS).toMatch(/always call it, even if the order looks old, large or unusual/i);
+    expect(REFUND_INSTRUCTIONS).toMatch(/never say a refund is approved, rejected, passed on or being reviewed unless a tool result/i);
+    expect(REFUND_INSTRUCTIONS).toMatch(/if you haven't called request_refund yet, you have not submitted anything/i);
+    expect(REFUND_INSTRUCTIONS).toMatch(/never say a request was sent if the tool call failed/i);
+    expect(REFUND_INSTRUCTIONS).toMatch(/the full amount/i);
+  });
+
+  it("the AI is called the refund assistant, and only the person is the refund specialist", () => {
+    expect(REFUND_INSTRUCTIONS).toMatch(/you are copper's refund assistant/i);
+    expect(REFUND_INSTRUCTIONS).toMatch(/you are not that person/i);
+    expect(SUPPORT_INSTRUCTIONS).toMatch(/the refund assistant is taking over/i);
+    expect(SUPPORT_INSTRUCTIONS).not.toMatch(/refund specialist is taking over/i);
+    expect(SUPPORT_INSTRUCTIONS).toMatch(/never say a refund request was submitted, passed on or approved/i);
+  });
+
   it("the Refund agent tells the customer a specialist will review a pending request as soon as possible", () => {
     expect(REFUND_INSTRUCTIONS).toMatch(/passed to a refund specialist/i);
     expect(REFUND_INSTRUCTIONS).toMatch(/as soon as possible/i);

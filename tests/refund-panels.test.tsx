@@ -14,7 +14,7 @@ vi.mock("@/lib/copper/refund-actions", () => ({
 }));
 
 import { createLive } from "@/lib/ai/live";
-import { RefundPanels } from "@/components/copper/refund-panels";
+import { CONSOLE_REFRESH_MS, RefundPanels } from "@/components/copper/refund-panels";
 
 beforeEach(() => {
   loadRefundConsole.mockResolvedValue({
@@ -154,5 +154,94 @@ describe("Refund Console panel", () => {
     await waitFor(() =>
       expect(panel.getByText(/refunds can't be read right now/i)).toBeInTheDocument(),
     );
+  });
+});
+
+describe("Refund Console refresh", () => {
+  const row = (id: string, order: string, name: string) => ({
+    id,
+    order_id: order,
+    amount_cents: 12900,
+    reason: "No longer needed",
+    status: "pending",
+    decided_by: null,
+    reviewer_note: null,
+    created_at: "2026-11-17T12:00:00Z",
+    decided_at: null,
+    orders: { customer_name: name, items: "Copper Notes" },
+  });
+  const listOf = (...rows: ReturnType<typeof row>[]) => ({ status: "ok", limitCents: 5000, refunds: rows });
+  const first = row("123e4567-e89b-42d3-a456-426614174000", "1003", "Priya Shah");
+  const second = row("223e4567-e89b-42d3-a456-426614174000", "1005", "Lena Park");
+
+  const openConsole = async () => {
+    window.history.replaceState(null, "", "/#refund-console");
+    render(<RefundPanels aiConfigured supabaseConfigured />);
+    const panel = within(await screen.findByTestId("refund-console"));
+    await panel.findByText(/Order 1003/);
+    return panel;
+  };
+
+  it("the Refresh button picks up a request that came in after the panel opened", async () => {
+    loadRefundConsole.mockResolvedValue(listOf(first));
+    const panel = await openConsole();
+    expect(panel.queryByText(/Order 1005/)).toBeNull();
+
+    loadRefundConsole.mockResolvedValue(listOf(first, second));
+    fireEvent.click(panel.getByRole("button", { name: /^refresh$/i }));
+    expect(await panel.findByText(/Order 1005/)).toBeInTheDocument();
+    expect(panel.getByText(/Waiting for a decision \(2\)/)).toBeInTheDocument();
+  });
+
+  it("refreshes on its own while the panel stays open", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      loadRefundConsole.mockResolvedValue(listOf(first));
+      const panel = await openConsole();
+      const reads = loadRefundConsole.mock.calls.length;
+
+      loadRefundConsole.mockResolvedValue(listOf(first, second));
+      await vi.advanceTimersByTimeAsync(CONSOLE_REFRESH_MS + 500);
+      expect(await panel.findByText(/Order 1005/)).toBeInTheDocument();
+      expect(loadRefundConsole.mock.calls.length).toBeGreaterThan(reads);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a failed refresh keeps the last list and says so, and a note being typed survives", async () => {
+    loadRefundConsole.mockResolvedValue(listOf(first));
+    const panel = await openConsole();
+    const note = panel.getByRole("textbox", { name: /note for order 1003/i });
+    fireEvent.change(note, { target: { value: "Half-written reason" } });
+
+    loadRefundConsole.mockResolvedValue({ status: "unavailable" });
+    fireEvent.click(panel.getByRole("button", { name: /^refresh$/i }));
+    await waitFor(() =>
+      expect(panel.getByTestId("console-updated")).toHaveTextContent(/couldn't refresh/i),
+    );
+    expect(panel.getByText(/Order 1003/)).toBeInTheDocument();
+    expect(panel.getByRole("textbox", { name: /note for order 1003/i })).toHaveValue("Half-written reason");
+
+    loadRefundConsole.mockResolvedValue(listOf(first));
+    fireEvent.click(panel.getByRole("button", { name: /^refresh$/i }));
+    await waitFor(() =>
+      expect(panel.getByTestId("console-updated")).toHaveTextContent(/updated/i),
+    );
+  });
+
+  it("stops refreshing when the panel is closed", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      loadRefundConsole.mockResolvedValue(listOf(first));
+      const panel = await openConsole();
+      fireEvent.click(panel.getByRole("button", { name: /^close$/i }));
+      await waitFor(() => expect(screen.queryByTestId("refund-console")).toBeNull());
+      const reads = loadRefundConsole.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(CONSOLE_REFRESH_MS * 3);
+      expect(loadRefundConsole.mock.calls.length).toBe(reads);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

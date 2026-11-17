@@ -5,6 +5,17 @@ import { convertArrayToReadableStream, MockLanguageModelV4 } from "ai/test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { finalValue } from "@/lib/ai/live";
 
+const dbMock = vi.hoisted(() => ({
+  readOrder: vi.fn(),
+  readRefund: vi.fn(),
+  readLatestRefundForOrder: vi.fn(),
+  readLimitCents: vi.fn(),
+  readOpenRefundForOrder: vi.fn(),
+  createRefund: vi.fn(),
+  markOrderRefunded: vi.fn(),
+}));
+vi.mock("@/lib/copper/refunds", () => dbMock);
+
 let model: MockLanguageModelV4;
 vi.mock("@ai-sdk/google", () => ({
   createGoogleGenerativeAI: () => () => model,
@@ -94,7 +105,7 @@ describe("askSupport", () => {
   it("RA-7: when Copper calls the hand-off tool, the Refund agent answers the same message", async () => {
     model = modelStreaming(
       calls("hand_off_to_refund_agent"),
-      says("A refund specialist is taking over."),
+      says("The refund assistant is taking over."),
       says("What is your order number?"),
     );
     const { askSupport } = await load();
@@ -102,7 +113,7 @@ describe("askSupport", () => {
       (await askSupport({ messages: say("I want a refund"), mode: "shopping" })).progress,
     );
     expect(result.mode).toBe("refund");
-    expect(result.reply).toContain("A refund specialist is taking over.");
+    expect(result.reply).toContain("The refund assistant is taking over.");
     expect(result.reply).toContain("What is your order number?");
     // The third model call is the Refund agent: its own tools and instructions.
     expect(toolNames(2)).toEqual([
@@ -111,7 +122,7 @@ describe("askSupport", () => {
       "lookup_order",
       "request_refund",
     ]);
-    expect(systemText(2)).toContain("refund specialist");
+    expect(systemText(2)).toContain("refund assistant");
     expect(result.steps.some((s) => s.type === "tool" && s.name === "hand_off_to_refund_agent")).toBe(true);
   });
 
@@ -177,7 +188,7 @@ describe("askSupport", () => {
   });
 
   it("RA-18: calls are logged as module 4, with a feature for each agent", async () => {
-    model = modelStreaming(says("A specialist will help."), says("Which order?"));
+    model = modelStreaming(says("The refund assistant will help."), says("Which order?"));
     const { askSupport } = await load();
     await finalValue(
       (await askSupport({ messages: say("refund please"), mode: "shopping" })).progress,
@@ -211,5 +222,121 @@ describe("askSupport", () => {
     );
     expect(result.status).toBe("error");
     expect(result.reply).toMatch(/sorry/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The customer is only told a request was sent on or decided if it really was.
+// ---------------------------------------------------------------------------
+
+const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+const order = (id: string, cents: number, days: number) => ({
+  id,
+  customer_name: "Lena Park",
+  items: "Copper Notes (Night Sky)",
+  amount_cents: cents,
+  ordered_at: daysAgo(days),
+  refunded: false,
+});
+const REQUEST_1005 = { orderId: "1005", amountUsd: 129, reason: "No longer needed" };
+
+describe("askSupport: no claim without a saved request", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    dbMock.readLimitCents.mockResolvedValue(5000);
+    dbMock.readOpenRefundForOrder.mockResolvedValue("none");
+    dbMock.markOrderRefunded.mockResolvedValue(true);
+    dbMock.createRefund.mockImplementation(async (input: { status: string }) => ({
+      id: "r-1005",
+      status: input.status,
+    }));
+  });
+
+  const run = async (steps: StreamPart[][], messages = say("Order 1005, the full amount please.")) => {
+    model = modelStreaming(...steps);
+    const { askSupport } = await load();
+    return finalValue((await askSupport({ messages, mode: "refund" })).progress);
+  };
+
+  it("order 1005 replay: a claimed review with nothing saved is removed and the agent submits it", async () => {
+    dbMock.readOrder.mockResolvedValue(order("1005", 12900, 60));
+    const result = await run([
+      says("I've passed your request to a refund specialist for review."),
+      calls("request_refund", REQUEST_1005),
+      says("Your request has been passed to a refund specialist."),
+    ]);
+
+    // The false claim is gone, and the request was really saved as pending.
+    expect(result.reply).not.toContain("I've passed your request");
+    expect(result.reply).toContain("refund specialist");
+    expect(dbMock.createRefund).toHaveBeenCalledTimes(1);
+    expect(dbMock.createRefund).toHaveBeenCalledWith(
+      expect.objectContaining({ orderId: "1005", status: "pending" }),
+    );
+    // The retry was told what it did wrong; the first attempt was not.
+    expect(systemText(0)).not.toContain("Correction");
+    expect(systemText(1)).toContain("Correction");
+  });
+
+  it("if the agent still can't back its claim up, the customer is told plainly nothing was sent", async () => {
+    const result = await run([
+      says("I've passed your request to a refund specialist."),
+      says("Your request is now with a specialist for review."),
+    ]);
+    expect(result.reply).toMatch(/haven't submitted a refund request/i);
+    expect(result.reply).not.toMatch(/passed your request|now with a specialist/i);
+    expect(dbMock.createRefund).not.toHaveBeenCalled();
+    expect(model.doStreamCalls).toHaveLength(2);
+  });
+
+  it("a claim that follows a saved request is left alone, with no retry", async () => {
+    dbMock.readOrder.mockResolvedValue(order("1005", 12900, 60));
+    const result = await run([
+      calls("request_refund", REQUEST_1005),
+      says("It has been passed to a refund specialist who will review it as soon as possible."),
+    ]);
+    expect(result.reply).toContain("as soon as possible");
+    expect(model.doStreamCalls).toHaveLength(2);
+    expect(systemText(1)).not.toContain("Correction");
+    expect(dbMock.createRefund).toHaveBeenCalledTimes(1);
+  });
+
+  it("plain questions are never treated as claims", async () => {
+    const result = await run([says("Which order is this for, and how much would you like back?")]);
+    expect(result.reply).toBe("Which order is this for, and how much would you like back?");
+    expect(model.doStreamCalls).toHaveLength(1);
+  });
+
+  it("adds what the app did if the agent leaves a pending request out of its reply", async () => {
+    dbMock.readOrder.mockResolvedValue(order("1003", 14900, 6));
+    const result = await run([
+      calls("request_refund", { orderId: "1003", amountUsd: 149, reason: "Broken" }),
+      says("Okay, all done!"),
+    ]);
+    expect(result.reply).toContain("Okay, all done!");
+    expect(result.reply).toMatch(/passed to a refund specialist/i);
+    expect(result.reply).toMatch(/as soon as possible/i);
+  });
+
+  it("adds the approval if the agent leaves it out of its reply", async () => {
+    dbMock.readOrder.mockResolvedValue(order("1001", 799, 4));
+    const result = await run([
+      calls("request_refund", { orderId: "1001", amountUsd: 7.99, reason: "Not needed" }),
+      says("Thanks for your patience!"),
+    ]);
+    expect(result.reply).toContain("Your refund of $7.99 is approved.");
+    expect(dbMock.createRefund).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "approved", decidedBy: "auto" }),
+    );
+  });
+
+  it("the customer is never told it was sent when the request is rejected by the rules", async () => {
+    dbMock.readOrder.mockResolvedValue({ ...order("1006", 799, 20), refunded: true });
+    const result = await run([
+      calls("request_refund", { orderId: "1006", amountUsd: 7.99, reason: "Not needed" }),
+      says("Thanks, I've checked."),
+    ]);
+    expect(result.reply).toMatch(/already been refunded/i);
+    expect(result.reply).not.toMatch(/specialist/i);
   });
 });

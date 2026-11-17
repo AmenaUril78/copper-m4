@@ -54,9 +54,9 @@ describe("SupportChat", () => {
     render(<SupportChat />);
     send("I want a refund");
     expect(await screen.findByText("A specialist is taking over.")).toBeInTheDocument();
-    expect(screen.getByText(/chat passed to the refund specialist/i)).toBeInTheDocument();
+    expect(screen.getByText(/chat passed to the refund assistant/i)).toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.getByTestId("support-mode")).toHaveTextContent("Refund specialist"),
+      expect(screen.getByTestId("support-mode")).toHaveTextContent("Refund assistant"),
     );
     // The button is hidden while the refund agent has the chat.
     expect(screen.queryByRole("button", { name: /request a refund/i })).toBeNull();

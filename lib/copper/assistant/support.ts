@@ -18,6 +18,12 @@ import {
 } from "@/lib/copper/assistant/handoff";
 import type { Progress, Step } from "@/lib/copper/assistant/progress";
 import {
+  CORRECTION,
+  isUnbackedClaim,
+  receiptFor,
+  UNBACKED_FALLBACK,
+} from "@/lib/copper/assistant/reply-check";
+import {
   REFUND_INSTRUCTIONS,
   refundTools,
 } from "@/lib/copper/assistant/refund-agent";
@@ -31,8 +37,12 @@ export type SupportProgress = Progress & { mode: SupportMode };
 export type SupportResult = { progress: Live<SupportProgress> };
 
 const MAX_STEPS = 5;
-/** At most two agents answer one message: a hand-off (or hand-back) and the agent it hands to. */
-const MAX_RUNS = 2;
+/**
+ * At most three agent runs per message: a hand-off (or hand-back) and the
+ * agent it hands to, plus one retry if the Refund agent claims an outcome
+ * that no tool result backs up.
+ */
+const MAX_RUNS = 3;
 
 // A Server Action is open to anyone who can send the POST, so the request is
 // checked for shape and size before it reaches a model.
@@ -66,8 +76,12 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Starts the agent that owns this mode. */
-function runAgent(mode: SupportMode, messages: SupportMessage[]) {
+/** Starts the agent that owns this mode. A correction is added to its instructions on a retry. */
+function runAgent(
+  mode: SupportMode,
+  messages: SupportMessage[],
+  correction?: string,
+) {
   return callStream(
     {
       module: 4,
@@ -78,7 +92,12 @@ function runAgent(mode: SupportMode, messages: SupportMessage[]) {
       providerOptions: THOUGHT_SUMMARIES,
       stopWhen: stepCountIs(MAX_STEPS),
       ...(mode === "refund"
-        ? { instructions: REFUND_INSTRUCTIONS, tools: refundTools }
+        ? {
+            instructions: correction
+              ? `${REFUND_INSTRUCTIONS}\n\n${correction}`
+              : REFUND_INSTRUCTIONS,
+            tools: refundTools,
+          }
         : { instructions: SUPPORT_INSTRUCTIONS, tools: supportTools }),
     },
   );
@@ -99,10 +118,14 @@ export async function askSupport(request: SupportRequest): Promise<SupportResult
       progress.steps.find((s) => s.type === "tool" && s.id === id);
     const lastQuestion = messages.filter((m) => m.role === "user").at(-1);
 
+    // Set once the Refund agent has been caught claiming an outcome nothing
+    // backs up, so it is retried only once.
+    let correction: string | undefined;
+
     try {
       for (let run = 0; run < MAX_RUNS; run++) {
         const agent = progress.mode;
-        const result = runAgent(agent, messages);
+        const result = runAgent(agent, messages, correction);
         let handedOff = false;
         let handedBack = false;
         let thisReply = "";
@@ -168,6 +191,25 @@ export async function askSupport(request: SupportRequest): Promise<SupportResult
           update(snapshot(progress));
         }
 
+        // The customer must never be told a request was sent on or decided
+        // unless a tool result shows it really was. If the Refund agent says so
+        // with nothing saved, its words are removed and it tries again; if it
+        // still can't back it up, the customer is told plainly nothing was sent.
+        if (agent === "refund" && isUnbackedClaim(thisReply, progress.steps)) {
+          progress.reply = progress.reply.slice(
+            0,
+            progress.reply.length - thisReply.length,
+          );
+          if (correction === undefined && run + 1 < MAX_RUNS) {
+            correction = CORRECTION;
+            update(snapshot(progress));
+            continue;
+          }
+          progress.reply += UNBACKED_FALLBACK;
+          thisReply = UNBACKED_FALLBACK;
+          update(snapshot(progress));
+        }
+
         // Who answers next? Only the code decides, from what the agent did.
         if (agent === "shopping") {
           const safetyNet =
@@ -185,6 +227,11 @@ export async function askSupport(request: SupportRequest): Promise<SupportResult
         }
         update(snapshot(progress));
       }
+
+      // If a request was saved, the customer always hears what the app did,
+      // even if the agent left it out of its own words.
+      const receipt = receiptFor(progress.steps, progress.reply);
+      if (receipt) progress.reply = `${progress.reply.trim()}\n\n${receipt}`;
 
       if (!progress.reply.trim()) progress.reply = APOLOGY;
       done(snapshot({ ...progress, status: "done" }));

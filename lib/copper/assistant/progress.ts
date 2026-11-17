@@ -43,7 +43,7 @@ export const TOOL_LABELS: Record<string, string> = {
 
 /** The same, for the refund chat's tools (Copper Support). Kept apart so Ask Copper's four stay four. */
 export const REFUND_TOOL_LABELS: Record<string, string> = {
-  hand_off_to_refund_agent: "Passing you to the refund specialist",
+  hand_off_to_refund_agent: "Passing you to the refund assistant",
   lookup_order: "Looking up the order",
   request_refund: "Asking for the refund",
   check_refund_status: "Checking the refund",

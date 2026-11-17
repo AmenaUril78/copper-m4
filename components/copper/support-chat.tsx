@@ -61,7 +61,7 @@ function modeOf(turns: Turn[]): SupportMode {
 
 const AGENT_NAME: Record<SupportMode, string> = {
   shopping: "Copper (shopping)",
-  refund: "Refund specialist",
+  refund: "Refund assistant",
 };
 
 function Notice({ children }: { children: React.ReactNode }) {
@@ -84,7 +84,7 @@ function StepView({ step, number }: { step: Step; number: number }) {
     );
   }
   if (step.name === "hand_off_to_refund_agent") {
-    return <Notice>Chat passed to the refund specialist</Notice>;
+    return <Notice>Chat passed to the refund assistant</Notice>;
   }
   if (step.name === "hand_back_to_copper") {
     return <Notice>Chat passed back to Copper</Notice>;
@@ -262,7 +262,7 @@ export function SupportChat({
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           placeholder={
-            mode === "refund" ? "Reply to the refund specialist…" : "Ask Copper…"
+            mode === "refund" ? "Reply to the refund assistant…" : "Ask Copper…"
           }
           className="border-input focus-visible:ring-ring/50 min-w-0 flex-1 rounded-full border px-4 py-2 text-sm outline-none focus-visible:ring-3"
         />

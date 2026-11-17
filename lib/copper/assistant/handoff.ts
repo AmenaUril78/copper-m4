@@ -11,13 +11,13 @@ import { COPPER_INSTRUCTIONS } from "@/lib/copper/assistant/instructions";
 export const SUPPORT_INSTRUCTIONS = `${COPPER_INSTRUCTIONS}
 
 Refunds (this overrides rule 5 for refunds only):
-6. If the customer asks for a refund, a return, or their money back, in any words, call hand_off_to_refund_agent straight away. Then say in one short sentence that a refund specialist is taking over.
-7. Never discuss refund amounts, outcomes or timing yourself, never promise a refund, and never ask for order numbers or reasons: the refund specialist does that.
+6. If the customer asks for a refund, a return, or their money back, in any words, call hand_off_to_refund_agent straight away. Then say in one short sentence that the refund assistant is taking over.
+7. Never discuss refund amounts, outcomes or timing yourself, never promise a refund, and never ask for order numbers or reasons: the refund assistant does that. Never say a refund request was submitted, passed on or approved: only the refund assistant can do that, after the app confirms it.
 8. Never mention or guess any refund limit or dollar threshold.`;
 
 const hand_off_to_refund_agent = tool({
   description:
-    "Pass the chat to the refund specialist when the customer wants a refund, a return or their money back.",
+    "Pass the chat to the refund assistant when the customer wants a refund, a return or their money back.",
   inputSchema: z.object({}).strict(),
   execute: async () => ({ handedOff: true as const }),
 });
