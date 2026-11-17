@@ -4,10 +4,12 @@ import { PlusPricing } from "@/components/copper/landing/plus-pricing";
 import { PrivacySummary } from "@/components/copper/landing/privacy-summary";
 import { ProductsSection } from "@/components/copper/landing/products-section";
 import { Showcase } from "@/components/copper/landing/showcase";
+import { RefundPanels } from "@/components/copper/refund-panels";
 import { SiteFooter } from "@/components/copper/site-footer";
 import { SiteHeader } from "@/components/copper/site-header";
 import { isAiConfigured } from "@/lib/ai/call";
 import { getPlans, getPrivacySummary, getProducts } from "@/lib/copper/catalog";
+import { isSupabaseConfigured } from "@/lib/supabase/server";
 
 export default function Home() {
   const products = getProducts();
@@ -23,6 +25,10 @@ export default function Home() {
       </main>
       <SiteFooter />
       <AskCopper aiConfigured={isAiConfigured()} />
+      <RefundPanels
+        aiConfigured={isAiConfigured()}
+        supabaseConfigured={isSupabaseConfigured()}
+      />
     </>
   );
 }

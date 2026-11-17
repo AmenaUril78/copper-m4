@@ -109,6 +109,51 @@ comparison shows what it does when nothing tells it to check.
 **Risks and open questions:** cost per question is logged to `ai_calls`. The
 default model is set in `lib/ai/models.ts` and can be changed with `AI_MODEL`.
 
+## Module 4: Refund agent
+
+**Summary:** a second agent that handles refund requests. Plain code decides
+whether a refund is small enough to approve automatically; larger ones wait for
+a person in the Refund Console. The AI handles the conversation, and code and
+people handle the money. The full spec is
+[`docs/refund-agent/spec.md`](refund-agent/spec.md).
+
+| Piece | Where | What it does |
+|---|---|---|
+| Panels | `components/copper/refund-panels.tsx`, mounted in `app/page.tsx` | A "Copper Support" launcher and two slide-out panels (support chat and Refund Console), also opened by `/#support` and `/#refund-console`. The site stays one page |
+| Support chat | `components/copper/support-chat.tsx` | A chat with two agents. Shows who has the chat, a "Request a refund" button and each tool call. The panel shows `<SetupRequired />` without an AI key |
+| Switchboard | `lib/copper/assistant/support.ts` | `askSupport({ messages, mode })`: runs the agent that owns the mode, and changes the mode when an agent hands off or hands back |
+| Copper's hand-off | `lib/copper/assistant/handoff.ts` | `hand_off_to_refund_agent`, the support instructions, and a keyword safety net |
+| Refund agent | `lib/copper/assistant/refund-agent.ts` | Its instructions and four tools: `lookup_order`, `request_refund`, `check_refund_status`, `hand_back_to_copper` |
+| The rule | `lib/copper/refund-policy.ts` | `decideRefund`: approve, send to a person, or reject. Plain code, no AI |
+| Saving and deciding | `lib/copper/refund-service.ts`, `lib/copper/refunds.ts` | `requestRefund` and `decideAsHuman`; the only file that reads or writes the refund tables |
+| Refund Console | `components/copper/refund-console.tsx`, `lib/copper/refund-actions.ts` | Pending queue (reject needs a reason), auto-refund limit editor, refund log. Data is loaded by a Server Action each time the panel opens |
+| Data | `supabase/migrations/20261117000000_refunds.sql`, `supabase/seed.sql` | Tables `orders`, `refunds`, `settings`, with demo orders |
+| AI calls | `lib/ai/call.ts` (module 4, features `ask-copper-support` and `refund-agent`) | `callStream` with thought summaries; up to 5 steps per agent |
+
+**Data flow:** customer message → support chat (sends the chat's `mode`) →
+`askSupport` → the agent for that mode → tool call → `refund-service` → rules in
+`refund-policy.ts` → `refunds` table → result back to the model → reply. Over the
+limit, the row is saved as `pending`; a person's click in the Refund Console
+changes it, and the agent reports it the next time `check_refund_status` runs.
+
+**Decisions and trade-offs:**
+- **The rule is code.** `request_refund` takes no limit input; the limit is read
+  from the `settings` table, so no model can choose its own.
+- **A separate support chat.** Module 2's tests fix Ask Copper's panel and tools,
+  so the two-agent chat is a new panel and action and Ask Copper is untouched.
+- **Panels, not pages.** Module 1's AC-1.4 requires a single page, so the chat
+  and the console are slide-out panels on `/`.
+- **The chat holds the mode.** No `chats` table: the page already holds the
+  conversation, and a changed mode can't approve money anyway.
+- **The agents never talk to each other.** The code changes the mode; the agent
+  and the human meet only in the database.
+- **Money in whole cents** to avoid rounding mistakes.
+
+**Risks and open questions:** the app has no login, so the console and the
+refund tables are open to anyone with the public key: a class demo only, and the
+console says so. The customer learns a human's decision only on their next
+message (no live push). Cost per message is logged to `ai_calls`.
+
 ## Adding a module
 
 When a module changes how the app fits together, add a section here:

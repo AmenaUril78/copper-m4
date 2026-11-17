@@ -8,3 +8,18 @@ insert into inventory (sku, product, color, units_in_stock, next_shipment) value
   ('CN-DSA', 'Copper Notes', 'Desert Sand', 92, '2026-11-13'),
   ('CN-NSK', 'Copper Notes', 'Night Sky', 0, '2026-11-14')
 on conflict (sku) do nothing;
+
+-- Refund agent demo orders (fictional customers). Dates are relative to today,
+-- so the recent ones stay inside the 30-day return window. Safe to run more
+-- than once.
+insert into orders (id, customer_name, items, amount_cents, ordered_at, refunded) values
+  ('1001', 'Maya Ortiz', 'Copper Plus, monthly', 799, now() - interval '4 days', false),
+  ('1002', 'Devon Reyes', 'Copper Notes (Desert Sand)', 12900, now() - interval '9 days', false),
+  ('1003', 'Priya Shah', 'Copper Home (Night Sky)', 14900, now() - interval '6 days', false),
+  ('1004', 'Sam Whitaker', 'Copper Plus, monthly', 799, now() - interval '3 days', false),
+  ('1005', 'Lena Park', 'Copper Notes (Night Sky)', 12900, now() - interval '60 days', false),
+  ('1006', 'Omar Haddad', 'Copper Plus, monthly', 799, now() - interval '20 days', true)
+on conflict (id) do nothing;
+
+insert into settings (key, value) values ('auto_refund_limit_cents', 5000)
+on conflict (key) do nothing;
