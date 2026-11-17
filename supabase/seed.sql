@@ -18,7 +18,12 @@ insert into orders (id, customer_name, items, amount_cents, ordered_at, refunded
   ('1003', 'Priya Shah', 'Copper Home (Night Sky)', 14900, now() - interval '6 days', false),
   ('1004', 'Sam Whitaker', 'Copper Plus, monthly', 799, now() - interval '3 days', false),
   ('1005', 'Lena Park', 'Copper Notes (Night Sky)', 12900, now() - interval '60 days', false),
-  ('1006', 'Omar Haddad', 'Copper Plus, monthly', 799, now() - interval '20 days', true)
+  ('1006', 'Omar Haddad', 'Copper Plus, monthly', 799, now() - interval '20 days', true),
+  -- Test scenarios: the exact limit, a partial refund and asking for too much,
+  -- and an order one day past the 30-day return window.
+  ('1007', 'Nora Whitfield', 'Copper Plus, annual', 7900, now() - interval '8 days', false),
+  ('1008', 'Jamal Brooks', 'Copper Home (Polished Copper) + Copper Notes (Brushed Copper)', 27800, now() - interval '5 days', false),
+  ('1009', 'Elena Vasquez', 'Copper Notes (Brushed Copper)', 12900, now() - interval '31 days', false)
 on conflict (id) do nothing;
 
 insert into settings (key, value) values ('auto_refund_limit_cents', 5000)

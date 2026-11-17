@@ -214,4 +214,23 @@ The code is built and tested with fake data, but the live Supabase project doesn
 
 Try order 1001 ($7.99, auto-approved), 1003 ($149, waits for a person), 1005 (60 days old, goes to a person), and 1006 (already refunded, rejected).
 
+Three more orders each test one rule:
+
+| Order | Paid | Ask for | What should happen |
+|---|---|---|---|
+| **1007** (Copper Plus, annual, 8 days old) | $79.00 | $50.00 | Approved automatically: exactly at the limit counts |
+| | | $50.01 | Waits for a person: one cent over |
+| | | $100.00 | Rejected: more than was paid |
+| **1008** (Copper Home + Copper Notes, 5 days old) | $278.00 | $30.00 | Approved automatically: a partial refund under the limit |
+| | | $129.00 | Waits for a person: over the limit |
+| | | $300.00 | Rejected: more than was paid |
+| **1009** (Copper Notes, 31 days old) | $129.00 | $20.00 | Waits for a person even though it is small: past the 30-day return window |
+
+Each order can only be refunded once (an approved refund marks it refunded), and an order can only have one request waiting at a time. To try a different amount on the same order, reset the demo in the Supabase SQL editor. This clears all refund requests and un-refunds every order except 1006, which is meant to stay refunded:
+
+```sql
+delete from refunds;
+update orders set refunded = false where id <> '1006';
+```
+
 **Demo-only security:** the policies in the migration let the public Supabase key read the refund tables and make only the changes the app needs. Anyone with that key could write to them directly and skip the rules. Real use needs authentication and a private server key.
