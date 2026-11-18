@@ -10,7 +10,7 @@ _Fictional — for educational use. Status: built, updated to match the build. T
 4. **The chat keeps its conversation.** A closed panel unmounts its content, so the conversation is kept in `RefundPanels` and survives closing the panel or visiting the console.
 5. **No claim without proof.** The first live test showed the Refund agent telling a customer their order 1005 request was "passed to a specialist" without ever calling `request_refund`, so nothing was saved. `lib/copper/assistant/reply-check.ts` now checks every Refund agent reply against the tool results (see section 4).
 6. **Two names.** The AI is the **refund assistant**. Only a person is a **refund specialist**, so "passed to a refund specialist" always means a real request is waiting in the console.
-7. **`request_refund` takes dollars** (`amountUsd`, like 35.00). The code converts to whole cents before the rules see it.
+7. **`request_refund` takes dollars, and the amount is optional** (`amountUsd`, like 35.00). Left out, the code refunds the full amount paid, read from the order. A customer asking for a refund means the whole order unless they say otherwise, so the agent never asks how much to refund. A named amount is converted to whole cents before the rules see it.
 
 ## Scenario
 
@@ -108,6 +108,7 @@ Its own instructions, in plain English:
 - Be polite and short. Only help with refunds.
 - Never say a refund is approved until a tool says so.
 - Never invent order details or amounts.
+- Never ask the customer how much they want refunded. Ask only for the order number, and for the reason if they haven't given one. The full amount paid is the default; the agent names an amount only if the customer says they want less.
 - Never mention or guess the auto-refund limit.
 - If the customer asks about something else, call `hand_back_to_copper`.
 
@@ -116,7 +117,7 @@ Its tools (strict zod schemas; unknown fields are rejected):
 | Tool | Input | Does |
 |---|---|---|
 | `lookup_order` | `orderId` | Returns items, amount paid, date, whether already refunded, and the **latest refund on the order** (its status and any reviewer's reason) |
-| `request_refund` | `orderId`, `amountUsd` (like 35.00), `reason` | Converts to cents, calls `decideRefund`, saves the `refunds` row, returns `approved`, `pending` or `rejected` with the reason. **Takes no limit input** |
+| `request_refund` | `orderId`, `reason`, optional `amountUsd` (like 35.00) | Reads the full amount paid from the order unless `amountUsd` is given, converts to cents, calls `decideRefund`, saves the `refunds` row, returns `approved`, `pending` or `rejected` with the reason. **Takes no limit input** |
 | `check_refund_status` | `refundId` | Returns `status` and `reviewer_note` |
 | `hand_back_to_copper` | none | Sets the chat mode back to `shopping` |
 
@@ -132,8 +133,8 @@ While the mode is `refund`, every message goes to the Refund agent until it hand
 
 **No claim without proof (`reply-check.ts`).** After each Refund agent reply, the code checks it against the tool results from the same answer. If the reply says a request was passed on, submitted, approved or rejected, or mentions a specialist reviewing, but no tool returned a saved outcome (`request_refund` approved, pending or rejected; `lookup_order` showing a refund already on the order; `check_refund_status` finding the refund), then:
 
-1. the reply's words are removed, and the agent runs once more with a correction ("call request_refund now, or ask for what's missing");
-2. if it still can't back the claim up, the customer sees: "I haven't submitted a refund request for you yet. Please tell me your order number, how much you'd like refunded, and why, and I'll submit it."
+1. the reply's words are removed, and the agent runs once more with a correction ("call request_refund now, or ask for the order number or reason if one is missing");
+2. if it still can't back the claim up, the customer sees: "I haven't submitted a refund request for you yet. Please tell me your order number and why you'd like a refund, and I'll submit it."
 
 After the agent finishes, if its last `request_refund` returned an outcome the reply never mentions, the app's own message is added, so the customer always hears what really happened. A failed tool call is never evidence.
 
@@ -192,6 +193,7 @@ After a human decides, the customer learns the outcome when they ask. The Refund
 | **RA-20** | When a request goes to a person, the customer is told it has been passed to a refund specialist who will review it as soon as possible, with no mention of the limit |
 | **RA-21** | If the Refund agent tells a customer a request was sent on or decided and no tool result shows it, the reply is removed and the agent retries once; if it still can't back it up, the customer is told no request was submitted |
 | **RA-22** | The Refund Console has a Refresh button and re-reads the refunds every 15 seconds while open; a failed refresh keeps the last list and any note being typed |
+| **RA-23** | A customer who asks for a refund is never asked how much to refund. `request_refund` with no amount refunds the full amount paid, and a named amount (a partial refund) is used as given |
 
 ## Out of scope
 
@@ -216,15 +218,19 @@ Try order 1001 ($7.99, auto-approved), 1003 ($149, waits for a person), 1005 (60
 
 Three more orders each test one rule:
 
-| Order | Paid | Ask for | What should happen |
+By default a customer is refunded the **full amount paid**, so just saying "I'd like a refund for order 1007, I don't need it" requests the whole $79.00. To test the other amounts below, say the amount in your message, for example "I only want $50 back".
+
+| Order | Paid | Say | What should happen |
 |---|---|---|---|
-| **1007** (Copper Plus, annual, 8 days old) | $79.00 | $50.00 | Approved automatically: exactly at the limit counts |
-| | | $50.01 | Waits for a person: one cent over |
-| | | $100.00 | Rejected: more than was paid |
-| **1008** (Copper Home + Copper Notes, 5 days old) | $278.00 | $30.00 | Approved automatically: a partial refund under the limit |
-| | | $129.00 | Waits for a person: over the limit |
-| | | $300.00 | Rejected: more than was paid |
-| **1009** (Copper Notes, 31 days old) | $129.00 | $20.00 | Waits for a person even though it is small: past the 30-day return window |
+| **1007** (Copper Plus, annual, 8 days old) | $79.00 | (no amount) | Waits for a person: the full $79.00 is over the limit |
+| | | "only $50.00" | Approved automatically: exactly at the limit counts |
+| | | "only $50.01" | Waits for a person: one cent over |
+| | | "$100.00" | Rejected: more than was paid |
+| **1008** (Copper Home + Copper Notes, 5 days old) | $278.00 | (no amount) | Waits for a person: the full $278.00 is over the limit |
+| | | "only $30.00" | Approved automatically: a partial refund under the limit |
+| | | "only $129.00" | Waits for a person: over the limit |
+| | | "$300.00" | Rejected: more than was paid |
+| **1009** (Copper Notes, 31 days old) | $129.00 | "only $20.00" | Waits for a person even though it is small: past the 30-day return window |
 
 Each order can only be refunded once (an approved refund marks it refunded), and an order can only have one request waiting at a time. To try a different amount on the same order, reset the demo in the Supabase SQL editor. This clears all refund requests and un-refunds every order except 1006, which is meant to stay refunded:
 

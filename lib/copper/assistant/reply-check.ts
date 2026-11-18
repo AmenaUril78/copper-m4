@@ -60,11 +60,11 @@ export function isUnbackedClaim(reply: string, steps: Step[]): boolean {
 }
 
 /** What the agent is told when it was caught claiming an outcome that doesn't exist. */
-export const CORRECTION = `Correction: in your last reply you told the customer a refund request was sent on or decided, but no refund request was saved, because request_refund was never successfully called. Do not repeat that claim. If the customer has given an order number, call lookup_order and then request_refund now (use the amount they asked for, or the full amount paid if they said "the full amount"; use their words as the reason). If you are missing the order number, the amount or the reason, ask for just what is missing. Only describe an outcome after a tool result shows it.`;
+export const CORRECTION = `Correction: in your last reply you told the customer a refund request was sent on or decided, but no refund request was saved, because request_refund was never successfully called. Do not repeat that claim. If the customer has given an order number, call lookup_order and then request_refund now (leave amountUsd out to refund the full amount paid, unless they named a smaller amount; use their words as the reason). If you are missing the order number or the reason, ask for just what is missing. Never ask how much they want refunded. Only describe an outcome after a tool result shows it.`;
 
 /** What the customer sees if the agent still can't back up its claim after one retry. */
 export const UNBACKED_FALLBACK =
-  "I haven't submitted a refund request for you yet. Please tell me your order number, how much you'd like refunded, and why, and I'll submit it.";
+  "I haven't submitted a refund request for you yet. Please tell me your order number and why you'd like a refund, and I'll submit it.";
 
 /**
  * If the agent's last request_refund returned an outcome the reply never

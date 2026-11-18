@@ -82,6 +82,33 @@ describe("tool inputs", () => {
     expect(result.success).toBe(false);
   });
 
+  it("the amount is optional: leaving it out means the full amount paid", () => {
+    expect(requestRefundInput.safeParse({ orderId: "1003", reason: "Broken" }).success).toBe(true);
+  });
+
+  it("an amount that is given must still be valid", () => {
+    for (const amountUsd of [0, -5, 12.345, 20000, "all of it", null]) {
+      expect(requestRefundInput.safeParse({ orderId: "1003", reason: "Broken", amountUsd }).success).toBe(false);
+    }
+  });
+
+  it("request_refund without an amount refunds the whole order", async () => {
+    vi.mocked(db.readOrder).mockResolvedValue({
+      id: "1005",
+      customer_name: "x",
+      items: "Copper Notes",
+      amount_cents: 12900,
+      ordered_at: new Date(Date.now() - 60 * 86_400_000).toISOString(),
+      refunded: false,
+    });
+    vi.mocked(db.readLimitCents).mockResolvedValue(5000);
+    vi.mocked(db.readOpenRefundForOrder).mockResolvedValue("none");
+    vi.mocked(db.createRefund).mockResolvedValue({ id: "r1" } as never);
+    const result = await requestRefundTool({ orderId: "1005", reason: "It stopped working" });
+    expect(result.status).toBe("pending");
+    expect(db.createRefund).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 12900 }));
+  });
+
   it("accepts dollars and cents", () => {
     const result = requestRefundInput.safeParse({
       orderId: "1003",
@@ -267,6 +294,15 @@ describe("the instructions", () => {
     expect(REFUND_INSTRUCTIONS).toMatch(/if you haven't called request_refund yet, you have not submitted anything/i);
     expect(REFUND_INSTRUCTIONS).toMatch(/never say a request was sent if the tool call failed/i);
     expect(REFUND_INSTRUCTIONS).toMatch(/the full amount/i);
+  });
+
+  it("the Refund agent never asks how much to refund, and leaves the amount out by default", () => {
+    expect(REFUND_INSTRUCTIONS).toMatch(/never ask the customer how much they want refunded/i);
+    expect(REFUND_INSTRUCTIONS).toMatch(/means the full amount they paid/i);
+    expect(REFUND_INSTRUCTIONS).toMatch(/leave amountUsd out/i);
+    expect(REFUND_INSTRUCTIONS).toMatch(/only set amountUsd if the customer says they want less/i);
+    // The amount is not one of the things it is told to collect before refunding.
+    expect(REFUND_INSTRUCTIONS).not.toMatch(/the order number, the amount and/i);
   });
 
   it("the AI is called the refund assistant, and only the person is the refund specialist", () => {

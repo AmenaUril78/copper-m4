@@ -16,8 +16,8 @@ export const REFUND_INSTRUCTIONS = `You are Copper's refund assistant for Copper
 
 Rules:
 1. Only help with refunds. If the customer asks about anything else (prices, stock, products), call hand_back_to_copper and write nothing else, so Copper can answer straight away.
-2. Get the order number first, then call lookup_order to check the order. If you don't have the order number, ask for it. If the amount or the reason isn't clear, ask for just that. Don't ask for more than you need.
-3. As soon as you have the order number, the amount and the customer's reason, call request_refund. Always call it, even if the order looks old, large or unusual: the app decides, not you. Never decide yourself whether a refund is allowed. If the customer says "the full amount", use the full amount paid that lookup_order shows. Use the customer's own words as the reason.
+2. Get the order number first, then call lookup_order to check the order. If you don't have the order number, ask for it. Never ask the customer how much they want refunded: a customer who asks for a refund on an order means the full amount they paid. If they haven't said why, ask for the reason in one short question. Don't ask for more than you need.
+3. As soon as you have the order number and the customer's reason, call request_refund. Always call it, even if the order looks old, large or unusual: the app decides, not you. Never decide yourself whether a refund is allowed. Leave amountUsd out so the app refunds the full amount paid. Only set amountUsd if the customer says they want less than they paid, and then use the exact amount they name. Use the customer's own words as the reason.
 4. Never say a refund is approved, rejected, passed on or being reviewed unless a tool result in this conversation shows it. If you haven't called request_refund yet, you have not submitted anything, so don't say you have. If request_refund says the request is pending, tell the customer warmly, in your own words, that it has been passed to a refund specialist who will review it as soon as possible, and that they can come back to this chat to ask how it is going. Don't promise a specific time or an outcome.
 5. If a customer asks what happened with an earlier refund request, call lookup_order and read latestRefund. If it is pending, say a refund specialist is still reviewing it and will get to it as soon as possible. If it is approved, say so. If it was rejected, tell them the reason exactly as the tool gives it. Don't make a new request for an order that already has a pending one. You can also use check_refund_status when you have a refund id.
 6. Never invent order details, amounts or refund ids. If a tool says it can't check right now, or a tool call fails, say that plainly and suggest trying again soon. Never say a request was sent if the tool call failed.
@@ -31,13 +31,16 @@ export const lookupOrderInput = z.object({ orderId }).strict();
 export const requestRefundInput = z
   .object({
     orderId,
+    // Leave out to refund the full amount paid. Only a customer who asks for
+    // less than they paid needs this.
     amountUsd: z
       .number()
       .positive()
       .max(10000)
       .refine((n) => Math.abs(n * 100 - Math.round(n * 100)) < 1e-6, {
         message: "Use dollars and cents, like 35.00.",
-      }),
+      })
+      .optional(),
     reason: z.string().trim().min(1).max(300),
   })
   .strict();
@@ -120,7 +123,10 @@ export async function requestRefundTool(
 ): Promise<RefundRequestResult> {
   return requestRefund({
     orderId: input.orderId,
-    amountCents: Math.round(input.amountUsd * 100),
+    amountCents:
+      input.amountUsd === undefined
+        ? undefined
+        : Math.round(input.amountUsd * 100),
     reason: input.reason,
   });
 }
@@ -168,7 +174,7 @@ const lookup_order = tool({
 
 const request_refund = tool({
   description:
-    "Ask for a refund on an order, with the amount in dollars and the customer's reason. The app decides and saves the result: approved, pending a person's review, or rejected.",
+    "Ask for a refund on an order, with the customer's reason. Leave amountUsd out to refund the full amount paid (the usual case); give it only if the customer asks for less. The app decides and saves the result: approved, pending a person's review, or rejected.",
   inputSchema: requestRefundInput,
   execute: async (input) => requestRefundTool(input),
 });

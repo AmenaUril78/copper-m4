@@ -278,12 +278,30 @@ describe("askSupport: no claim without a saved request", () => {
     expect(systemText(1)).toContain("Correction");
   });
 
+  it("a refund request with no amount refunds the full order and the customer is never asked for an amount", async () => {
+    dbMock.readOrder.mockResolvedValue(order("1005", 12900, 60));
+    const result = await run(
+      [
+        calls("request_refund", { orderId: "1005", reason: "It stopped working" }),
+        says("Your request has been passed to a refund specialist, who will review it as soon as possible."),
+      ],
+      say("I want a refund for order 1005, it stopped working."),
+    );
+    expect(dbMock.createRefund).toHaveBeenCalledWith(
+      expect.objectContaining({ orderId: "1005", amountCents: 12900, status: "pending" }),
+    );
+    expect(result.reply).not.toMatch(/how much/i);
+    expect(result.reply).toMatch(/refund specialist/i);
+    expect(model.doStreamCalls).toHaveLength(2);
+  });
+
   it("if the agent still can't back its claim up, the customer is told plainly nothing was sent", async () => {
     const result = await run([
       says("I've passed your request to a refund specialist."),
       says("Your request is now with a specialist for review."),
     ]);
     expect(result.reply).toMatch(/haven't submitted a refund request/i);
+    expect(result.reply).not.toMatch(/how much/i);
     expect(result.reply).not.toMatch(/passed your request|now with a specialist/i);
     expect(dbMock.createRefund).not.toHaveBeenCalled();
     expect(model.doStreamCalls).toHaveLength(2);

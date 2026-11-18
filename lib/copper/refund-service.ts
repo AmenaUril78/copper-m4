@@ -27,7 +27,8 @@ const UNAVAILABLE =
 
 export type RequestRefundInput = {
   orderId: string;
-  amountCents: number;
+  /** Leave out to refund the full amount the customer paid, which is the usual case. */
+  amountCents?: number;
   reason: string;
 };
 
@@ -40,6 +41,11 @@ export async function requestRefund(
   if (order === "not_found") {
     return { status: "not_found", message: "There is no order with that number." };
   }
+
+  // A customer who asks for a refund means the whole order unless they say
+  // otherwise, so the amount defaults to what they paid. The code reads it from
+  // the order, so nobody (and no model) has to type the number.
+  const amountCents = input.amountCents ?? order.amount_cents;
 
   const limitCents = await readLimitCents();
   if (limitCents === null) return { status: "unavailable", message: UNAVAILABLE };
@@ -57,7 +63,7 @@ export async function requestRefund(
   }
 
   const decision = decideRefund({
-    amountCents: input.amountCents,
+    amountCents,
     order: {
       amountCents: order.amount_cents,
       orderedAt: order.ordered_at,
@@ -70,11 +76,11 @@ export async function requestRefund(
     // A nonsense amount (zero, negative, not whole cents) has nothing worth
     // logging, so only a real amount is saved as a rejected request.
     const loggable =
-      Number.isInteger(input.amountCents) && input.amountCents > 0;
+      Number.isInteger(amountCents) && amountCents > 0;
     const saved = loggable
       ? await createRefund({
           orderId: order.id,
-          amountCents: input.amountCents,
+          amountCents,
           reason: input.reason,
           status: "rejected",
           decidedBy: "rules",
@@ -87,7 +93,7 @@ export async function requestRefund(
   if (decision.outcome === "needs_human") {
     const saved = await createRefund({
       orderId: order.id,
-      amountCents: input.amountCents,
+      amountCents,
       reason: input.reason,
       status: "pending",
       decidedBy: null,
@@ -97,14 +103,14 @@ export async function requestRefund(
     return {
       status: "pending",
       refundId: saved.id,
-      message: `Your refund request for ${formatCents(input.amountCents)} has been passed to a refund specialist. They will review it as soon as possible.`,
+      message: `Your refund request for ${formatCents(amountCents)} has been passed to a refund specialist. They will review it as soon as possible.`,
     };
   }
 
   // Approved by the rules: record it, then mark the order refunded.
   const saved = await createRefund({
     orderId: order.id,
-    amountCents: input.amountCents,
+    amountCents,
     reason: input.reason,
     status: "approved",
     decidedBy: "auto",
@@ -115,7 +121,7 @@ export async function requestRefund(
   return {
     status: "approved",
     refundId: saved.id,
-    message: `Your refund of ${formatCents(input.amountCents)} is approved.`,
+    message: `Your refund of ${formatCents(amountCents)} is approved.`,
   };
 }
 

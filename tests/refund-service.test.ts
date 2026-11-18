@@ -78,6 +78,37 @@ describe("requestRefund", () => {
     expect(result.message).not.toMatch(/\$50/);
   });
 
+  it("with no amount given, refunds the full amount paid (a big order waits for a person)", async () => {
+    const result = await requestRefund({ orderId: "1003", reason: "It stopped working" });
+    expect(result.status).toBe("pending");
+    expect(db.createRefund).toHaveBeenCalledWith(
+      expect.objectContaining({ amountCents: 14900, status: "pending" }),
+    );
+    expect(result.message).toContain("$149.00");
+  });
+
+  it("with no amount given, a small order is refunded in full automatically", async () => {
+    vi.mocked(db.readOrder).mockResolvedValue({ ...order, id: "1001", amount_cents: 799 });
+    const result = await requestRefund({ orderId: "1001", reason: "Not needed" });
+    expect(result.status).toBe("approved");
+    expect(db.createRefund).toHaveBeenCalledWith(
+      expect.objectContaining({ amountCents: 799, status: "approved", decidedBy: "auto" }),
+    );
+    expect(result.message).toContain("$7.99");
+  });
+
+  it("a named amount still wins over the default (a partial refund)", async () => {
+    const result = await requestRefund({ orderId: "1003", amountCents: 3000, reason: "Partly broken" });
+    expect(result.status).toBe("approved");
+    expect(db.createRefund).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 3000 }));
+  });
+
+  it("with no amount given, an already refunded order is still rejected", async () => {
+    vi.mocked(db.readOrder).mockResolvedValue({ ...order, refunded: true });
+    const result = await requestRefund({ orderId: "1003", reason: "Again" });
+    expect(result.status).toBe("rejected");
+  });
+
   it("RA-5: the limit comes from the database, so a changed limit changes the result", async () => {
     vi.mocked(db.readLimitCents).mockResolvedValue(20000);
     const result = await requestRefund({ orderId: "1003", amountCents: 12000, reason: "x" });

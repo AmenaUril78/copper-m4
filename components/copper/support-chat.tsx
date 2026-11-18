@@ -186,7 +186,7 @@ export function SupportChat({
         {turns.length === 0 && (
           <p className="text-muted-foreground text-sm">
             Ask about Copper, or ask for a refund. Try an order number from 1001
-            to 1006.
+            to 1009.
           </p>
         )}
         {turns.map((turn, i) => {

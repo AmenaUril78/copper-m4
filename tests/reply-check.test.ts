@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Step } from "@/lib/copper/assistant/progress";
 import {
+  CORRECTION,
+  UNBACKED_FALLBACK,
   claimsRefundOutcome,
   hasRefundEvidence,
   isUnbackedClaim,
@@ -73,6 +75,19 @@ describe("claimsRefundOutcome", () => {
     "",
   ])("lets through: %s", (text) => {
     expect(claimsRefundOutcome(text)).toBe(false);
+  });
+});
+
+describe("the correction and the fallback never ask how much to refund", () => {
+  it("tells the agent to leave the amount out, and not to ask for one", () => {
+    expect(CORRECTION).toMatch(/leave amountUsd out/i);
+    expect(CORRECTION).toMatch(/never ask how much they want refunded/i);
+  });
+
+  it("the message the customer sees asks only for the order number and the reason", () => {
+    expect(UNBACKED_FALLBACK).toMatch(/order number/i);
+    expect(UNBACKED_FALLBACK).toMatch(/why/i);
+    expect(UNBACKED_FALLBACK).not.toMatch(/how much/i);
   });
 });
 
