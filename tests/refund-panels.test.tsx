@@ -266,3 +266,68 @@ describe("Refund Console refresh", () => {
     }
   });
 });
+
+describe("Support panel on a wide screen", () => {
+  const setScreen = (wide: boolean) =>
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: (query: string) => ({
+        matches: wide && query.includes("min-width: 1024px"),
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }),
+    });
+  afterEach(() => {
+    Object.defineProperty(window, "matchMedia", { configurable: true, writable: true, value: undefined });
+  });
+
+  it("shows the chat and the Refund Console together, side by side", async () => {
+    setScreen(true);
+    render(<RefundPanels aiConfigured supabaseConfigured />);
+    const panel = within(await open());
+    expect(panel.getByTestId("support-chat")).toBeInTheDocument();
+    const side = within(panel.getByTestId("support-console"));
+    expect(await side.findByTestId("pending-refund")).toBeInTheDocument();
+    expect(side.getByText(/Order 1003 · \$120\.00/)).toBeInTheDocument();
+    expect(side.getByText(/Auto-refund limit/)).toBeInTheDocument();
+    // No separate staff link is needed when the console is already on screen.
+    expect(panel.queryByRole("button", { name: /open the refund console/i })).toBeNull();
+    // The console is read once for this view, not twice.
+    expect(loadRefundConsole).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the chat conversation next to the console while you use it", async () => {
+    setScreen(true);
+    const live = createLive<never>();
+    live.done({ steps: [], reply: "Which order is it?", status: "done", mode: "refund" } as never);
+    askSupport.mockResolvedValue({ progress: live.live });
+    render(<RefundPanels aiConfigured supabaseConfigured />);
+    const panel = within(await open());
+    await panel.findByTestId("pending-refund");
+    fireEvent.change(panel.getByRole("textbox", { name: /your message/i }), {
+      target: { value: "I want a refund" },
+    });
+    fireEvent.click(panel.getByRole("button", { name: /^send$/i }));
+    expect(await panel.findByText("Which order is it?")).toBeInTheDocument();
+    // The console is still there, with the same pending refund.
+    expect(panel.getByTestId("pending-refund")).toBeInTheDocument();
+  });
+
+  it("on a narrow screen there is no inline console, and the staff link opens it instead", async () => {
+    setScreen(false);
+    render(<RefundPanels aiConfigured supabaseConfigured />);
+    const panel = within(await open());
+    expect(panel.queryByTestId("support-console")).toBeNull();
+    expect(panel.getByRole("button", { name: /open the refund console/i })).toBeInTheDocument();
+    expect(loadRefundConsole).not.toHaveBeenCalled();
+  });
+
+  it("without Supabase the wide view says what to set up instead of crashing", async () => {
+    setScreen(true);
+    render(<RefundPanels aiConfigured supabaseConfigured={false} />);
+    const panel = within(await open());
+    expect(within(panel.getByTestId("support-console")).getByText(/set up supabase to use the console/i)).toBeInTheDocument();
+  });
+});

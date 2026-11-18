@@ -5,7 +5,7 @@
 // support chat; /#support and /#refund-console open the panels too, and the
 // support panel links to the console for staff.
 import { LifeBuoyIcon } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { RefundConsole } from "@/components/copper/refund-console";
 import { SupportChat, type SupportTurn } from "@/components/copper/support-chat";
 import { SetupRequired } from "@/components/setup-required";
@@ -21,6 +21,25 @@ import {
   loadRefundConsole,
   type ConsoleData,
 } from "@/lib/copper/refund-actions";
+import { cn } from "@/lib/utils";
+
+/** From this width up, the Support panel shows the chat and the Refund Console side by side. */
+const WIDE_QUERY = "(min-width: 1024px)";
+
+function subscribeWide(onChange: () => void) {
+  if (typeof window === "undefined" || !window.matchMedia) return () => {};
+  const query = window.matchMedia(WIDE_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function useWide(): boolean {
+  return useSyncExternalStore(
+    subscribeWide,
+    () => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia(WIDE_QUERY).matches,
+    () => false,
+  );
+}
 
 /** How often the open console re-reads the refunds, so new requests appear on their own. */
 export const CONSOLE_REFRESH_MS = 15000;
@@ -141,6 +160,9 @@ export function RefundPanels({
   // unmounts its content. This way closing the panel (or opening the console)
   // doesn't wipe the chat.
   const [turns, setTurns] = useState<SupportTurn[]>([]);
+  // On a wide screen the Support panel also holds the Refund Console, so a
+  // customer's request and the staff decision can be seen together.
+  const wide = useWide();
 
   // Loading the site at /#support or /#refund-console opens that panel. A
   // click on a link to the same hash is heard too, as it fires no hashchange.
@@ -181,39 +203,75 @@ export function RefundPanels({
           side="left"
           data-testid="support-panel"
           showCloseButton={false}
-          className="w-full gap-0 p-0 data-[side=left]:w-full data-[side=left]:sm:max-w-lg"
+          className={cn(
+            "w-full gap-0 p-0 data-[side=left]:w-full data-[side=left]:sm:max-w-lg",
+            wide && "data-[side=left]:sm:max-w-6xl",
+          )}
         >
           <SheetTitle className="sr-only">Copper Support</SheetTitle>
           <SheetDescription className="sr-only">
             Ask Copper a question, or ask for a refund.
+            {wide ? " The Refund Console for staff is on the right." : ""}
           </SheetDescription>
-          {aiConfigured ? (
-            <>
-              {!supabaseConfigured && (
-                <p className="bg-chart-4/15 border-b p-3 text-sm">
-                  Refunds aren&apos;t set up yet: they need Supabase. Copper can
-                  still answer shopping questions.
-                </p>
+          <div className={cn("flex min-h-0 flex-1", wide ? "flex-row" : "flex-col")}>
+            <div
+              className={cn(
+                "flex min-h-0 flex-1 flex-col",
+                wide && "w-[30rem] max-w-[45%] flex-none border-r",
               )}
-              <SupportChat turns={turns} setTurns={setTurns} />
-            </>
-          ) : (
-            <div className="bg-secondary flex-1 overflow-y-auto p-4">
-              <SetupRequired service="ai" />
-            </div>
-          )}
-          <div className="bg-card flex items-center justify-between gap-2 border-t p-2 text-xs">
-            <Button
-              variant="link"
-              size="sm"
-              className="h-auto p-1 text-xs"
-              onClick={() => {
-                setSupportOpen(false);
-                setConsoleOpen(true);
-              }}
             >
-              Staff: open the Refund Console
-            </Button>
+              {aiConfigured ? (
+                <>
+                  {!supabaseConfigured && (
+                    <p className="bg-chart-4/15 border-b p-3 text-sm">
+                      Refunds aren&apos;t set up yet: they need Supabase. Copper
+                      can still answer shopping questions.
+                    </p>
+                  )}
+                  <SupportChat turns={turns} setTurns={setTurns} />
+                </>
+              ) : (
+                <div className="bg-secondary flex-1 overflow-y-auto p-4">
+                  <SetupRequired service="ai" />
+                </div>
+              )}
+            </div>
+            {wide && (
+              <aside
+                data-testid="support-console"
+                aria-label="Refund Console"
+                className="bg-secondary flex min-h-0 flex-1 flex-col"
+              >
+                <div className="bg-chart-5 text-secondary p-4">
+                  <h2 className="text-base font-semibold">Refund Console</h2>
+                  <p className="text-secondary/70 text-sm">
+                    For staff: decide refunds, set the limit, read the log.
+                  </p>
+                </div>
+                <div className="flex-1 space-y-4 overflow-y-auto p-4">
+                  <ConsoleBody supabaseConfigured={supabaseConfigured} />
+                </div>
+              </aside>
+            )}
+          </div>
+          <div className="bg-card flex items-center justify-between gap-2 border-t p-2 text-xs">
+            {wide ? (
+              <span className="text-muted-foreground px-1">
+                Customer chat on the left, staff Refund Console on the right.
+              </span>
+            ) : (
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto p-1 text-xs"
+                onClick={() => {
+                  setSupportOpen(false);
+                  setConsoleOpen(true);
+                }}
+              >
+                Staff: open the Refund Console
+              </Button>
+            )}
             <SheetClose asChild>
               <Button variant="ghost" size="sm">
                 Close
