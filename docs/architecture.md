@@ -119,7 +119,7 @@ people handle the money. The full spec is
 
 | Piece | Where | What it does |
 |---|---|---|
-| Panels | `components/copper/refund-panels.tsx`, mounted in `app/page.tsx` | A "Copper Support" launcher and two slide-out panels (support chat and Refund Console), also opened by `/#support` and `/#refund-console`. The site stays one page |
+| Panels | `components/copper/refund-panels.tsx`, mounted in `app/page.tsx` | A "Copper Support" launcher and two slide-out panels (support chat and Refund Console), also opened by `/#support` and `/#refund-console`. The console is never shown by itself: the Support panel has a "Refund Console (staff)" link that shows it beside the chat on a wide screen or opens it as its own panel on a narrow one. The site stays one page |
 | Support chat | `components/copper/support-chat.tsx` | A chat with two agents. Shows who has the chat, a "Request a refund" button and each tool call. The panel shows `<SetupRequired />` without an AI key |
 | Switchboard | `lib/copper/assistant/support.ts` | `askSupport({ messages, mode })`: runs the agent that owns the mode, and changes the mode when an agent hands off or hands back |
 | Copper's hand-off | `lib/copper/assistant/handoff.ts` | `hand_off_to_refund_agent`, the support instructions, and a keyword safety net |

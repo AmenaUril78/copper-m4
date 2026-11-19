@@ -103,7 +103,7 @@ describe("Copper Support panel", () => {
     fireEvent.click(support.getByRole("button", { name: /^send$/i }));
     await support.findByText("Thanks, noted.");
 
-    fireEvent.click(support.getByRole("button", { name: /open the refund console/i }));
+    fireEvent.click(support.getByRole("link", { name: /refund console/i }));
     const consolePanel = within(await screen.findByTestId("refund-console"));
     fireEvent.click(consolePanel.getByRole("button", { name: /^close$/i }));
     await waitFor(() => expect(screen.queryByTestId("refund-console")).toBeNull());
@@ -143,7 +143,7 @@ describe("Refund Console panel", () => {
   it("opens from the support panel's staff link and loads the pending refunds", async () => {
     render(<RefundPanels aiConfigured supabaseConfigured />);
     const support = within(await open());
-    fireEvent.click(support.getByRole("button", { name: /open the refund console/i }));
+    fireEvent.click(support.getByRole("link", { name: /refund console/i }));
     const panel = within(await screen.findByTestId("refund-console"));
     expect(await panel.findByTestId("pending-refund")).toBeInTheDocument();
     expect(panel.getByText(/Order 1003 · \$120\.00/)).toBeInTheDocument();
@@ -267,7 +267,7 @@ describe("Refund Console refresh", () => {
   });
 });
 
-describe("Support panel on a wide screen", () => {
+describe("The Refund Console is a link, not shown by itself", () => {
   const setScreen = (wide: boolean) =>
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
@@ -282,52 +282,101 @@ describe("Support panel on a wide screen", () => {
   afterEach(() => {
     Object.defineProperty(window, "matchMedia", { configurable: true, writable: true, value: undefined });
   });
+  const consoleLink = (panel: ReturnType<typeof within>) =>
+    panel.getByRole("link", { name: /^refund console \(staff\)$/i });
 
-  it("shows the chat and the Refund Console together, side by side", async () => {
+  it("a wide screen starts with just the chat and a Refund Console link", async () => {
     setScreen(true);
     render(<RefundPanels aiConfigured supabaseConfigured />);
     const panel = within(await open());
     expect(panel.getByTestId("support-chat")).toBeInTheDocument();
-    const side = within(panel.getByTestId("support-console"));
+    expect(panel.queryByTestId("support-console")).toBeNull();
+    expect(screen.queryByTestId("refund-console")).toBeNull();
+    expect(consoleLink(panel)).toHaveAttribute("href", "#refund-console");
+    // Nothing reads the refunds until someone asks for the console.
+    expect(loadRefundConsole).not.toHaveBeenCalled();
+  });
+
+  it("clicking the link shows the console beside the chat, and clicking again puts it away", async () => {
+    setScreen(true);
+    render(<RefundPanels aiConfigured supabaseConfigured />);
+    const panel = within(await open());
+    fireEvent.click(consoleLink(panel));
+
+    const side = within(await panel.findByTestId("support-console"));
     expect(await side.findByTestId("pending-refund")).toBeInTheDocument();
     expect(side.getByText(/Order 1003 · \$120\.00/)).toBeInTheDocument();
     expect(side.getByText(/Auto-refund limit/)).toBeInTheDocument();
-    // No separate staff link is needed when the console is already on screen.
-    expect(panel.queryByRole("button", { name: /open the refund console/i })).toBeNull();
-    // The console is read once for this view, not twice.
+    // The chat is still there next to it, and no second panel opened.
+    expect(panel.getByTestId("support-chat")).toBeInTheDocument();
+    expect(screen.queryByTestId("refund-console")).toBeNull();
     expect(loadRefundConsole).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(panel.getByRole("link", { name: /hide the refund console/i }));
+    await waitFor(() => expect(panel.queryByTestId("support-console")).toBeNull());
+    expect(consoleLink(panel)).toBeInTheDocument();
   });
 
-  it("keeps the chat conversation next to the console while you use it", async () => {
+  it("the chat keeps working next to the console", async () => {
     setScreen(true);
     const live = createLive<never>();
     live.done({ steps: [], reply: "Which order is it?", status: "done", mode: "refund" } as never);
     askSupport.mockResolvedValue({ progress: live.live });
     render(<RefundPanels aiConfigured supabaseConfigured />);
     const panel = within(await open());
+    fireEvent.click(consoleLink(panel));
     await panel.findByTestId("pending-refund");
     fireEvent.change(panel.getByRole("textbox", { name: /your message/i }), {
       target: { value: "I want a refund" },
     });
     fireEvent.click(panel.getByRole("button", { name: /^send$/i }));
     expect(await panel.findByText("Which order is it?")).toBeInTheDocument();
-    // The console is still there, with the same pending refund.
     expect(panel.getByTestId("pending-refund")).toBeInTheDocument();
   });
 
-  it("on a narrow screen there is no inline console, and the staff link opens it instead", async () => {
+  it("closing the Support panel puts the console away, so it isn't open next time", async () => {
+    setScreen(true);
+    render(<RefundPanels aiConfigured supabaseConfigured />);
+    const panel = within(await open());
+    fireEvent.click(consoleLink(panel));
+    await panel.findByTestId("support-console");
+    fireEvent.click(panel.getByRole("button", { name: /^close$/i }));
+    await waitFor(() => expect(screen.queryByTestId("support-panel")).toBeNull());
+
+    const again = within(await open());
+    expect(again.queryByTestId("support-console")).toBeNull();
+    expect(consoleLink(again)).toBeInTheDocument();
+  });
+
+  it("a narrow screen opens the console as its own panel from the same link", async () => {
     setScreen(false);
     render(<RefundPanels aiConfigured supabaseConfigured />);
     const panel = within(await open());
     expect(panel.queryByTestId("support-console")).toBeNull();
-    expect(panel.getByRole("button", { name: /open the refund console/i })).toBeInTheDocument();
-    expect(loadRefundConsole).not.toHaveBeenCalled();
+    fireEvent.click(consoleLink(panel));
+    const consolePanel = within(await screen.findByTestId("refund-console"));
+    expect(await consolePanel.findByTestId("pending-refund")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId("support-panel")).toBeNull());
   });
 
-  it("without Supabase the wide view says what to set up instead of crashing", async () => {
+  it("the link doesn't change the address or open two panels at once", async () => {
+    setScreen(true);
+    render(<RefundPanels aiConfigured supabaseConfigured />);
+    const panel = within(await open());
+    fireEvent.click(consoleLink(panel));
+    await panel.findByTestId("support-console");
+    expect(window.location.hash).not.toBe("#refund-console");
+    expect(screen.queryByTestId("refund-console")).toBeNull();
+  });
+
+  it("without Supabase the console says what to set up instead of crashing", async () => {
     setScreen(true);
     render(<RefundPanels aiConfigured supabaseConfigured={false} />);
     const panel = within(await open());
-    expect(within(panel.getByTestId("support-console")).getByText(/set up supabase to use the console/i)).toBeInTheDocument();
+    fireEvent.click(consoleLink(panel));
+    expect(
+      within(await panel.findByTestId("support-console")).getByText(/set up supabase to use the console/i),
+    ).toBeInTheDocument();
+    expect(loadRefundConsole).not.toHaveBeenCalled();
   });
 });

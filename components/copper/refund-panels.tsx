@@ -160,9 +160,13 @@ export function RefundPanels({
   // unmounts its content. This way closing the panel (or opening the console)
   // doesn't wipe the chat.
   const [turns, setTurns] = useState<SupportTurn[]>([]);
-  // On a wide screen the Support panel also holds the Refund Console, so a
-  // customer's request and the staff decision can be seen together.
   const wide = useWide();
+  // The Refund Console is not shown by itself. On a wide screen, clicking the
+  // "Refund Console (staff)" link in the Support panel shows it next to the
+  // chat, so a customer's request and the staff decision can be seen together.
+  // On a narrow screen the same link opens the console as its own panel.
+  const [showInlineConsole, setShowInlineConsole] = useState(false);
+  const consoleBesideChat = wide && showInlineConsole;
 
   // Loading the site at /#support or /#refund-console opens that panel. A
   // click on a link to the same hash is heard too, as it fires no hashchange.
@@ -172,6 +176,9 @@ export function RefundPanels({
       if (window.location.hash === "#refund-console") setConsoleOpen(true);
     };
     const onClick = (event: MouseEvent) => {
+      // A link that already handled its own click (the one in the Support
+      // panel) isn't handled twice.
+      if (event.defaultPrevented) return;
       const target = event.target as Element;
       if (target.closest('a[href="#support"]')) setSupportOpen(true);
       if (target.closest('a[href="#refund-console"]')) setConsoleOpen(true);
@@ -186,6 +193,18 @@ export function RefundPanels({
     };
   }, []);
 
+  // The link in the Support panel: show the console beside the chat on a wide
+  // screen, or open it as its own panel on a narrow one.
+  const openConsoleFromSupport = (event: React.MouseEvent) => {
+    event.preventDefault();
+    if (wide) {
+      setShowInlineConsole((open) => !open);
+    } else {
+      setSupportOpen(false);
+      setConsoleOpen(true);
+    }
+  };
+
   return (
     <>
       <Button
@@ -198,26 +217,38 @@ export function RefundPanels({
         Copper Support
       </Button>
 
-      <Sheet open={supportOpen} onOpenChange={setSupportOpen}>
+      <Sheet
+        open={supportOpen}
+        onOpenChange={(open) => {
+          setSupportOpen(open);
+          // Closing the panel puts the console away again.
+          if (!open) setShowInlineConsole(false);
+        }}
+      >
         <SheetContent
           side="left"
           data-testid="support-panel"
           showCloseButton={false}
           className={cn(
             "w-full gap-0 p-0 data-[side=left]:w-full data-[side=left]:sm:max-w-lg",
-            wide && "data-[side=left]:sm:max-w-6xl",
+            consoleBesideChat && "data-[side=left]:sm:max-w-6xl",
           )}
         >
           <SheetTitle className="sr-only">Copper Support</SheetTitle>
           <SheetDescription className="sr-only">
-            Ask Copper a question, or ask for a refund.
-            {wide ? " The Refund Console for staff is on the right." : ""}
+            Ask Copper a question, or ask for a refund. Staff can open the Refund
+            Console from the link at the bottom.
           </SheetDescription>
-          <div className={cn("flex min-h-0 flex-1", wide ? "flex-row" : "flex-col")}>
+          <div
+            className={cn(
+              "flex min-h-0 flex-1",
+              consoleBesideChat ? "flex-row" : "flex-col",
+            )}
+          >
             <div
               className={cn(
                 "flex min-h-0 flex-1 flex-col",
-                wide && "w-[30rem] max-w-[45%] flex-none border-r",
+                consoleBesideChat && "w-[30rem] max-w-[45%] flex-none border-r",
               )}
             >
               {aiConfigured ? (
@@ -236,7 +267,7 @@ export function RefundPanels({
                 </div>
               )}
             </div>
-            {wide && (
+            {consoleBesideChat && (
               <aside
                 data-testid="support-console"
                 aria-label="Refund Console"
@@ -255,23 +286,15 @@ export function RefundPanels({
             )}
           </div>
           <div className="bg-card flex items-center justify-between gap-2 border-t p-2 text-xs">
-            {wide ? (
-              <span className="text-muted-foreground px-1">
-                Customer chat on the left, staff Refund Console on the right.
-              </span>
-            ) : (
-              <Button
-                variant="link"
-                size="sm"
-                className="h-auto p-1 text-xs"
-                onClick={() => {
-                  setSupportOpen(false);
-                  setConsoleOpen(true);
-                }}
-              >
-                Staff: open the Refund Console
-              </Button>
-            )}
+            <a
+              href="#refund-console"
+              onClick={openConsoleFromSupport}
+              className="text-primary px-1 py-1 text-xs font-medium underline-offset-4 hover:underline"
+            >
+              {consoleBesideChat
+                ? "Hide the Refund Console"
+                : "Refund Console (staff)"}
+            </a>
             <SheetClose asChild>
               <Button variant="ghost" size="sm">
                 Close
