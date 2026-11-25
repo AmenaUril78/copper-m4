@@ -36,8 +36,8 @@ jobs:
   # traces go to Langfuse. Branch protection on main requires this check, so a
   # pull request whose pass rate is too low can't be merged.
   # Needs these repository secrets (Settings > Secrets and variables > Actions):
-  #   GOOGLE_GENERATIVE_AI_API_KEY, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY,
-  #   LANGFUSE_BASE_URL
+  #   GOOGLE_GENERATIVE_AI_API_KEY, AI_MODEL, LANGFUSE_PUBLIC_KEY,
+  #   LANGFUSE_SECRET_KEY, LANGFUSE_BASE_URL
   evals:
     name: evals
     if: github.event_name == 'pull_request'
@@ -59,6 +59,7 @@ jobs:
         run: npm run eval
         env:
           GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+          AI_MODEL: ${{ secrets.AI_MODEL }}
           LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
           LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
           LANGFUSE_BASE_URL: ${{ secrets.LANGFUSE_BASE_URL }}
