@@ -5,6 +5,7 @@
 //   EVAL_VARIANTS   multi (default), single, or both
 //   EVAL_CASES      comma-separated question ids to run (default: all)
 //   EVAL_MIN_PASS_RATE  the pass rate needed to succeed (default 0.8)
+//   EVAL_PAUSE_MS   wait between calls, for a free key's per-minute limit
 //
 // Refunds use an in-memory copy of the demo orders (evals/fake-refund-store.ts),
 // so this can never touch the real database.
@@ -47,6 +48,14 @@ const variants: SupportVariant[] =
       : ["multi"];
 const onlyCases = process.env.EVAL_CASES?.split(",").map((s) => s.trim());
 const cases = GOLDEN_SET.filter((c) => !onlyCases || onlyCases.includes(c.id));
+
+// Optional wait (in milliseconds) before each grading call and after each
+// question, to stay under a free API key's requests-per-minute limit.
+const PAUSE_MS = Number(process.env.EVAL_PAUSE_MS ?? "0");
+const pause = () =>
+  PAUSE_MS > 0
+    ? new Promise<void>((r) => setTimeout(r, PAUSE_MS))
+    : Promise.resolve();
 
 const summaries: VariantSummary[] = [];
 
@@ -101,11 +110,25 @@ describe("Ask Copper golden set", () => {
           let judgeScore: number | null = null;
           let judgeReasoning = failed ? "The chat could not answer." : "";
           let judgePass = false;
+          let judgeFailed = false;
           if (!failed) {
-            const verdict = await judgeAnswer(golden, final.reply, final.steps);
-            judgeScore = verdict.score;
-            judgeReasoning = verdict.reasoning;
-            judgePass = verdict.pass;
+            // Stay under the free tier's requests-per-minute limit.
+            await pause();
+            try {
+              const verdict = await judgeAnswer(
+                golden,
+                final.reply,
+                final.steps,
+              );
+              judgeScore = verdict.score;
+              judgeReasoning = verdict.reasoning;
+              judgePass = verdict.pass;
+            } catch (error) {
+              // One failed grading call counts as a failed question; it
+              // must not throw away the other questions' results.
+              judgeFailed = true;
+              judgeReasoning = `The judge could not grade this answer: ${error instanceof Error ? error.message.slice(0, 120) : "unknown error"}`;
+            }
           }
 
           // onMetrics is called after the last update, so give it a moment.
@@ -126,7 +149,7 @@ describe("Ask Copper golden set", () => {
             tools: metrics?.tools ?? [],
             costUsd: metrics?.costUsd ?? 0,
             latencyMs: metrics?.latencyMs ?? 0,
-            error: failed,
+            error: failed || judgeFailed,
             traceId: metrics?.traceId,
           };
           results.push(result);
@@ -153,6 +176,7 @@ describe("Ask Copper golden set", () => {
             dataType: "BOOLEAN",
             comment: checks.problems.join("; ") || undefined,
           });
+          await pause();
         }
 
         const summary = summarize(variant, results);
